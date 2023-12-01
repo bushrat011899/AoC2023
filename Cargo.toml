@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "day_1",
+]
+
+[workspace.package]
+version = "1.0.0"
+authors = ["Zachary Harrold"]
+description = "Advent of Code 2023 Solutions"
+edition = "2021"
+
+[workspace.dependencies]
+clap = { version = "4.4.10", features = ["derive"] }
