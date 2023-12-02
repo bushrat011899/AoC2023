@@ -13,11 +13,11 @@ fn main() {
     let args = Args::parse();
 
     let input = std::fs::read_to_string(args.input).expect("must be able to read input file");
-    
+
     let result = parse_part_1(input.as_str()).expect("Must be able to parse input");
 
     println!("Part 1: {}", result);
-    
+
     let result = parse_part_2(input.as_str()).expect("Must be able to parse input");
 
     println!("Part 2: {}", result);
@@ -40,7 +40,7 @@ fn first_and_last_digit(input: &str) -> Option<(u32, u32)> {
 
     for character in input.chars() {
         let Some(digit) = character.to_digit(10) else {
-            continue
+            continue;
         };
 
         if first.is_none() {
@@ -92,14 +92,18 @@ fn parse_part_2(input: &str) -> Option<u128> {
             first = match (first, line.find(pattern)) {
                 (None, None) => None,
                 (None, Some(position)) => Some((position, value)),
-                (Some((old_position, _)), Some(new_position)) if new_position < old_position => Some((new_position, value)),
+                (Some((old_position, _)), Some(new_position)) if new_position < old_position => {
+                    Some((new_position, value))
+                }
                 (existing, _) => existing,
             };
 
             last = match (last, line.rfind(pattern)) {
                 (None, None) => None,
                 (None, Some(position)) => Some((position, value)),
-                (Some((old_position, _)), Some(new_position)) if new_position > old_position => Some((new_position, value)),
+                (Some((old_position, _)), Some(new_position)) if new_position > old_position => {
+                    Some((new_position, value))
+                }
                 (existing, _) => existing,
             };
         }
@@ -110,7 +114,7 @@ fn parse_part_2(input: &str) -> Option<u128> {
             (Some((_, value)), None) => 11 * value,
             (Some((_, first)), Some((_, last))) => 10 * first + last,
         };
-        
+
         result += value as u128;
     }
 
