@@ -14,130 +14,122 @@ fn main() {
 
     let input = std::fs::read_to_string(args.input).expect("must be able to read input file");
 
-    let result = solve_part_1(input.as_str()).expect("Must be able to parse input");
+    let result = solve_part_1(input.as_str());
 
-    println!("Part 1: {}", result);
+    println!("Part 1: {:?}", result);
 
-    let result = solve_part_2(input.as_str()).expect("Must be able to parse input");
+    let result = solve_part_2(input.as_str());
 
-    println!("Part 2: {}", result);
+    println!("Part 2: {:?}", result);
 }
 
-struct Bag {
-    red: u8,
-    green: u8,
-    blue: u8,
+#[derive(Default, Debug)]
+struct Dice<'a> {
+    count: std::collections::HashMap<&'a str, u8>,
 }
 
-struct Round {
-    red: u8,
-    green: u8,
-    blue: u8,
+impl<'a> Dice<'a> {
+    fn power(&self) -> u32 {
+        self.count.values().map(|&value| value as u32).product()
+    }
+
+    fn subset(&self, other: &Self) -> bool {
+        self.count.keys().all(|key| {
+            self.count.get(key).copied().unwrap_or_default()
+                <= other.count.get(key).copied().unwrap_or_default()
+        })
+    }
 }
 
-struct Game {
+impl<'a> TryFrom<&'a str> for Dice<'a> {
+    type Error = ();
+
+    fn try_from(summary: &'a str) -> Result<Self, Self::Error> {
+        let mut round = Self::default();
+
+        for cubes in summary.split(",") {
+            let mut split = cubes.trim().split(' ');
+
+            let count = split.next().ok_or(())?.parse::<u8>().map_err(|_| ())?;
+
+            round.count.insert(split.next().ok_or(())?, count);
+
+            if split.next().is_some() {
+                return Err(());
+            }
+        }
+
+        Ok(round)
+    }
+}
+
+#[derive(Default, Debug)]
+struct Game<'a> {
     id: u8,
-    rounds: Vec<Round>,
+    rounds: Vec<Dice<'a>>,
 }
 
-impl<'a> TryFrom<&'a str> for Game {
+impl<'a> TryFrom<&'a str> for Game<'a> {
     type Error = ();
 
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        let value = value.strip_prefix("Game ").ok_or(())?;
+        let mut split = value.strip_prefix("Game").ok_or(())?.trim().split(":");
 
-        let mut split = value.split(": ");
+        let id = split
+            .next()
+            .ok_or(())?
+            .trim()
+            .parse::<u8>()
+            .map_err(|_| ())?;
 
-        let id = split.next().ok_or(())?.parse::<u8>().map_err(|_| ())?;
+        let rounds = split
+            .next()
+            .ok_or(())?
+            .split(";")
+            .map(str::trim)
+            .map(Dice::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let summaries = split.next().ok_or(())?;
-
-        let None = split.next() else { return Err(()) };
-
-        let mut rounds = Vec::new();
-
-        for summary in summaries.split("; ") {
-            let mut round = Round {
-                red: 0,
-                green: 0,
-                blue: 0,
-            };
-
-            for cubes in summary.split(", ") {
-                let mut split = cubes.split(' ');
-
-                let count = split.next().ok_or(())?.parse::<u8>().map_err(|_| ())?;
-
-                let colour = split.next().ok_or(())?;
-
-                let None = split.next() else { return Err(()) };
-
-                match colour {
-                    "red" => round.red = count,
-                    "green" => round.green = count,
-                    "blue" => round.blue = count,
-                    _ => return Err(()),
-                }
-            }
-
-            rounds.push(round);
+        if split.next().is_some() {
+            return Err(());
         }
 
-        Ok(Game { id, rounds })
+        Ok(Self { id, rounds })
+    }
+}
+
+impl<'a> Game<'a> {
+    fn minimum_bag(&self) -> Dice {
+        self.rounds.iter().fold(Dice::default(), |mut bag, round| {
+            for (&colour, &count) in round.count.iter() {
+                let old_count = bag.count.entry(colour).or_default();
+                *old_count = (*old_count).max(count);
+            }
+
+            bag
+        })
     }
 }
 
 fn solve_part_1(input: &str) -> Option<u128> {
-    let bag = Bag {
-        red: 12,
-        green: 13,
-        blue: 14,
+    let bag = Dice {
+        count: vec![("red", 12), ("green", 13), ("blue", 14)]
+            .into_iter()
+            .collect(),
     };
 
-    let games = input
+    input
         .lines()
-        .map(|line| Game::try_from(line))
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-
-    let result = games
-        .into_iter()
-        .filter(|game| {
-            game.rounds.iter().all(|round| {
-                round.red <= bag.red && round.green <= bag.green && round.blue <= bag.blue
-            })
-        })
-        .fold(0, |x, game| x + game.id as u128);
-
-    Some(result)
+        .map(|line| Game::try_from(line).ok())
+        .filter(|g| !g.as_ref().is_some_and(|g| !g.minimum_bag().subset(&bag)))
+        .try_fold(0, |x, game| Some(game?.id as u128 + x))
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
-    let games = input
+    input
         .lines()
-        .map(|line| Game::try_from(line))
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-
-    let result = games
-        .into_iter()
-        .map(|game| {
-            let mut min_bag = Bag {
-                red: 0,
-                green: 0,
-                blue: 0,
-            };
-
-            min_bag.red = game.rounds.iter().map(|round| round.red).max().unwrap_or_default();
-            min_bag.green = game.rounds.iter().map(|round| round.green).max().unwrap_or_default();
-            min_bag.blue = game.rounds.iter().map(|round| round.blue).max().unwrap_or_default();
-
-            min_bag
-        })
-        .map(|min_bag| min_bag.red as u32 * min_bag.green as u32 * min_bag.blue as u32)
-        .fold(0, |x, power| x + power as u128);
-
-    Some(result)
+        .map(|line| Some(Game::try_from(line).ok()?.minimum_bag().power()))
+        .try_fold(0, |x, power| Some(power? as u128 + x))
 }
 
 #[cfg(test)]
