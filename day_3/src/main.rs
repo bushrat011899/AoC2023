@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    convert::Infallible,
-    ops::RangeInclusive,
-    str::FromStr,
-};
+use std::{collections::HashMap, convert::Infallible, ops::RangeInclusive, str::FromStr};
 
 use clap::Parser;
 
@@ -61,37 +56,36 @@ impl FromStr for Schematic {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut schematic = Schematic::default();
+        let mut active_part = None;
 
-        for (y, line) in s.lines().enumerate() {
-            let mut active_part: Option<((RangeInclusive<usize>, usize), usize)> = None;
-
-            for (x, char) in line.char_indices() {
-                match (Entry::from(char), &active_part) {
-                    (Entry::Value(digit), None) => {
-                        active_part = Some(((x..=x, y), digit as usize));
-                    }
-                    (Entry::Value(digit), Some(((old_range, _), old_value))) => {
-                        active_part =
-                            Some(((*old_range.start()..=x, y), 10 * old_value + digit as usize));
-                    }
-                    (Entry::Blank, None) => {}
-                    (Entry::Blank, Some((key, value))) => {
-                        schematic.parts.insert(key.clone(), *value);
-                        active_part = None;
-                    }
-                    (Entry::Symbol(symbol), None) => {
-                        schematic.symbols.insert((x, y), symbol);
-                    }
-                    (Entry::Symbol(symbol), Some((key, value))) => {
-                        schematic.symbols.insert((x, y), symbol);
-                        schematic.parts.insert(key.clone(), *value);
-                        active_part = None;
-                    }
+        for ((x, y), char) in s
+            .lines()
+            .enumerate()
+            .flat_map(|(y, line)| line.char_indices().map(move |(x, char)| ((x, y), char)))
+        {
+            active_part = match (Entry::from(char), active_part.take()) {
+                (Entry::Value(digit), None) => Some(((x..=x, y), digit as usize)),
+                (Entry::Value(digit), Some(((range, y_old), value))) if y_old == y => {
+                    Some(((*range.start()..=x, y), 10 * value + digit as usize))
                 }
-            }
-
-            if let Some((key, value)) = active_part {
-                schematic.parts.insert(key, value);
+                (Entry::Value(digit), Some(((range, y_old), value))) => {
+                    schematic.parts.insert((range, y_old), value);
+                    Some(((x..=x, y), digit as usize))
+                }
+                (Entry::Blank, None) => None,
+                (Entry::Blank, Some((key, value))) => {
+                    schematic.parts.insert(key, value);
+                    None
+                }
+                (Entry::Symbol(symbol), None) => {
+                    schematic.symbols.insert((x, y), symbol);
+                    None
+                }
+                (Entry::Symbol(symbol), Some((key, value))) => {
+                    schematic.symbols.insert((x, y), symbol);
+                    schematic.parts.insert(key, value);
+                    None
+                }
             }
         }
 
@@ -100,50 +94,50 @@ impl FromStr for Schematic {
 }
 
 fn solve_part_1(input: &str) -> Option<u128> {
-    let schematic: Schematic = input.parse().unwrap();
-    let mut sum = 0;
+    let schematic: Schematic = input.parse().ok()?;
 
-    for ((x_range, y), part) in schematic.parts.iter() {
-        let y_range = y.saturating_sub(1)..=y.saturating_add(1);
-        let x_range = x_range.start().saturating_sub(1)..=x_range.end().saturating_add(1);
-
-        let has_symbol = x_range
-            .flat_map(|x| y_range.clone().map(move |y| (x, y)))
-            .any(|key| schematic.symbols.get(&key).is_some());
-
-        if has_symbol {
-            sum += *part as u128;
-        }
-    }
+    let sum = schematic
+        .parts
+        .iter()
+        .filter_map(|((x_range, y), &part)| {
+            (x_range.start().saturating_sub(1)..=x_range.end().saturating_add(1))
+                .flat_map(|x| (y.saturating_sub(1)..=y.saturating_add(1)).map(move |y| (x, y)))
+                .find_map(|key| schematic.symbols.get(&key))
+                .map(move |_| part as u128)
+        })
+        .sum();
 
     Some(sum)
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
-    let schematic: Schematic = input.parse().unwrap();
-    let mut sum = 0;
+    let schematic: Schematic = input.parse().ok()?;
 
-    for (&(x, y), _) in schematic
+    let sum = schematic
         .symbols
         .iter()
         .filter(|(_, &symbol)| symbol == '*')
-    {
-        let y_range = y.saturating_sub(1)..=y.saturating_add(1);
+        .filter_map(|(&(x, y), _)| {
+            let ys = y.saturating_sub(1)..=y.saturating_add(1);
 
-        let mut adjacent = schematic
-            .parts
-            .iter()
-            .filter(|((x_range, y), _)| {
-                let x_range = x_range.start().saturating_sub(1)..=x_range.end().saturating_add(1);
-                x_range.contains(&x) && y_range.contains(y)
-            })
-            .map(|(_, &value)| value as u128);
+            let adjacent = schematic
+                .parts
+                .iter()
+                .filter(|((_, y), _)| ys.contains(y))
+                .filter(|((xs, _), _)| {
+                    (xs.start().saturating_sub(1)..=xs.end().saturating_add(1)).contains(&x)
+                })
+                .map(|(_, &value)| value as u128)
+                .take(3)
+                .collect::<Vec<_>>();
 
-        match (adjacent.next(), adjacent.next(), adjacent.next()) {
-            (Some(a), Some(b), None) => sum += a * b,
-            _ => {}
-        }
-    }
+            if adjacent.len() == 2 {
+                Some(adjacent.into_iter().product::<u128>())
+            } else {
+                None
+            }
+        })
+        .sum();
 
     Some(sum)
 }
