@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     convert::Infallible,
-    ops::{Range, RangeInclusive},
+    ops::RangeInclusive,
     str::FromStr,
 };
 
@@ -120,7 +120,32 @@ fn solve_part_1(input: &str) -> Option<u128> {
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
-    None
+    let schematic: Schematic = input.parse().unwrap();
+    let mut sum = 0;
+
+    for (&(x, y), _) in schematic
+        .symbols
+        .iter()
+        .filter(|(_, &symbol)| symbol == '*')
+    {
+        let y_range = y.saturating_sub(1)..=y.saturating_add(1);
+
+        let mut adjacent = schematic
+            .parts
+            .iter()
+            .filter(|((x_range, y), _)| {
+                let x_range = x_range.start().saturating_sub(1)..=x_range.end().saturating_add(1);
+                x_range.contains(&x) && y_range.contains(y)
+            })
+            .map(|(_, &value)| value as u128);
+
+        match (adjacent.next(), adjacent.next(), adjacent.next()) {
+            (Some(a), Some(b), None) => sum += a * b,
+            _ => {}
+        }
+    }
+
+    Some(sum)
 }
 
 #[cfg(test)]
@@ -146,8 +171,17 @@ mod tests {
 
     #[test]
     fn example_part_2() {
-        const INPUT: &'static str = r#""#;
-        const RESULT: Option<u128> = Some(2286);
+        const INPUT: &'static str = r#"467..114..
+...*......
+..35..633.
+......#...
+617*......
+.....+.58.
+..592.....
+......755.
+...$.*....
+.664.598.."#;
+        const RESULT: Option<u128> = Some(467835);
 
         assert_eq!(solve_part_2(INPUT), RESULT);
     }
