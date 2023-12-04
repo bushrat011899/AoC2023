@@ -1,4 +1,4 @@
-use std::{str::FromStr, collections::VecDeque};
+use std::{collections::VecDeque, str::FromStr};
 
 use clap::Parser;
 
@@ -33,7 +33,10 @@ struct ScratchCard {
 
 impl ScratchCard {
     fn matches(&self) -> usize {
-        self.scratched.iter().filter(|number| self.winners.contains(number)).count()
+        self.scratched
+            .iter()
+            .filter(|number| self.winners.contains(number))
+            .count()
     }
 
     fn score(&self) -> usize {
@@ -57,12 +60,17 @@ impl FromStr for ScratchCard {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.strip_prefix("Card").ok_or(())?.trim().split(':');
 
-        let id = split.next().ok_or(())?.trim().parse::<usize>().map_err(|_| ())?;
+        let id = split
+            .next()
+            .ok_or(())?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| ())?;
 
         let rest = split.next().ok_or(())?.trim();
 
         if split.next().is_some() {
-            return Err(())
+            return Err(());
         }
 
         let mut split = rest.split('|');
@@ -84,10 +92,14 @@ impl FromStr for ScratchCard {
             .map_err(|_| ())?;
 
         if split.next().is_some() {
-            return Err(())
+            return Err(());
         }
 
-        Ok(ScratchCard { id, winners, scratched })
+        Ok(ScratchCard {
+            id,
+            winners,
+            scratched,
+        })
     }
 }
 
