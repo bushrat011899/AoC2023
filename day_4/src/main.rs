@@ -38,27 +38,13 @@ impl ScratchCard {
             .filter(|number| self.winners.contains(number))
             .count()
     }
-
-    fn score(&self) -> usize {
-        let matches = self.matches();
-
-        if matches > 0 {
-            1 << (matches - 1)
-        } else {
-            0
-        }
-    }
-
-    fn bonus_cards(&self) -> impl Iterator<Item = usize> {
-        (self.id + 1)..(self.id + 1 + self.matches())
-    }
 }
 
 impl FromStr for ScratchCard {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.strip_prefix("Card").ok_or(())?.trim().split(':');
+        let mut split = s.trim().strip_prefix("Card").ok_or(())?.trim().split(':');
 
         let id = split
             .next()
@@ -107,34 +93,49 @@ fn solve_part_1(input: &str) -> Option<u128> {
     let sum = input
         .lines()
         .filter_map(|line| line.parse::<ScratchCard>().ok())
-        .map(|card| card.score() as u128)
+        .map(|card| {
+            let matches = card.matches();
+
+            if matches > 0 {
+                1 << (matches - 1)
+            } else {
+                0
+            }
+        })
         .sum::<u128>();
 
     Some(sum)
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
-    let cards = input
+    let (total, pending) = input
         .lines()
-        .map(|line| line.parse::<ScratchCard>())
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
+        .filter_map(|line| line.parse::<ScratchCard>().ok())
+        .enumerate()
+        .try_fold(
+            (0, VecDeque::new()),
+            |(total, mut pending), (index, card)| {
+                if index + 1 != card.id {
+                    return None;
+                }
 
-    let mut stack = cards.iter().map(|card| card.id).collect::<VecDeque<_>>();
-    let mut sum = 0;
+                let count = 1 + pending.pop_front().unwrap_or(0);
 
-    while !stack.is_empty() {
-        let card_id = stack.pop_front().unwrap();
-        sum += 1;
+                let matches = card.matches();
 
-        let card = cards.iter().find(|card| card.id == card_id).unwrap();
+                let pivot = matches.min(pending.len());
 
-        for card_id in card.bonus_cards() {
-            stack.push_back(card_id);
-        }
-    }
+                for index in 0..pivot {
+                    pending[index] += count;
+                }
 
-    Some(sum)
+                pending.extend((pivot..matches).map(|_| count));
+
+                Some((total + count, pending))
+            },
+        )?;
+
+    pending.is_empty().then_some(total)
 }
 
 #[cfg(test)]
@@ -165,27 +166,5 @@ Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11"#;
         const RESULT: Option<u128> = Some(30);
 
         assert_eq!(solve_part_2(INPUT), RESULT);
-    }
-
-    #[test]
-    fn example_part_2_1() {
-        const INPUT: &'static str = r#"Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53"#;
-
-        let card = INPUT.parse::<ScratchCard>().unwrap();
-
-        assert_eq!(card.id, 1);
-        assert_eq!(card.matches(), 4);
-        assert_eq!(card.bonus_cards().collect::<Vec<_>>(), vec![2, 3, 4, 5]);
-    }
-
-    #[test]
-    fn example_part_2_2() {
-        const INPUT: &'static str = r#"Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19"#;
-
-        let card = INPUT.parse::<ScratchCard>().unwrap();
-
-        assert_eq!(card.id, 2);
-        assert_eq!(card.matches(), 2);
-        assert_eq!(card.bonus_cards().collect::<Vec<_>>(), vec![3, 4]);
     }
 }
