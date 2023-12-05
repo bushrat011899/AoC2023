@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::Range, str::FromStr};
+use std::{ops::Range, str::FromStr};
 
 use clap::Parser;
 
@@ -25,25 +25,37 @@ fn main() {
     println!("Part 2: {:?}", result);
 }
 
-#[derive(Debug)]
-struct Seeds(Vec<usize>);
+#[derive(Debug, Clone)]
+struct Inventory {
+    item_type: String,
+    values: Vec<usize>,
+}
 
-impl FromStr for Seeds {
+impl FromStr for Inventory {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut tokens = s.trim().split_ascii_whitespace();
 
-        let Some("seeds:") = tokens.next() else {
-            return Err("Missing 'seeds' token");
+        let item_type = tokens
+            .next()
+            .ok_or("Missing inventory")?
+            .strip_suffix(':')
+            .ok_or("Expected ':'")?
+            .to_string();
+
+        let item_type = if let Some(stripped) = item_type.strip_suffix('s') {
+            stripped.to_string()
+        } else {
+            item_type
         };
 
-        let inner = tokens
+        let values = tokens
             .map(|token| token.parse())
             .collect::<Result<_, _>>()
-            .map_err(|_| "Could not parse seed ID")?;
+            .map_err(|_| "Could not parse inventory values")?;
 
-        Ok(Seeds(inner))
+        Ok(Inventory { item_type, values })
     }
 }
 
@@ -51,6 +63,44 @@ impl FromStr for Seeds {
 struct Rule {
     source: Range<usize>,
     destination: Range<usize>,
+}
+
+impl FromStr for Rule {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut tokens = s.split_ascii_whitespace();
+
+        let destination_start = tokens
+            .next()
+            .ok_or("Missing 'destination range start' field in mapping")?
+            .parse()
+            .map_err(|_| "Could not parse")?;
+
+        let source_start = tokens
+            .next()
+            .ok_or("Missing 'source range start' field in mapping")?
+            .parse()
+            .map_err(|_| "Could not parse")?;
+
+        let range = tokens
+            .next()
+            .ok_or("Missing 'range length' field in mapping")?
+            .parse::<usize>()
+            .map_err(|_| "Could not parse")?;
+
+        let None = tokens.next() else {
+            return Err("Unexpected token");
+        };
+
+        let source = source_start..(source_start + range);
+        let destination = destination_start..(destination_start + range);
+
+        Ok(Rule {
+            source,
+            destination,
+        })
+    }
 }
 
 impl Rule {
@@ -62,46 +112,19 @@ impl Rule {
         Option<Range<usize>>,
         Option<Range<usize>>,
     ) {
-        if source.end <= self.source.start {
-            // Provided range is before this rule
-            return (Some(source), None, None);
-        }
+        let left = source.start.min(self.source.start)..source.end.min(self.source.start);
+        let centre = source.start.max(self.source.start)..source.end.min(self.source.end);
+        let right = source.start.max(self.source.end)..source.end.max(self.source.end);
 
-        if source.start >= self.source.end {
-            // Provided range is after this rule
-            return (None, None, Some(source));
-        }
+        let left = (!left.is_empty()).then_some(left);
+        let centre = (!centre.is_empty()).then(|| {
+            let start = self.destination.start + centre.start - self.source.start;
+            let end = self.destination.start + centre.end - self.source.start;
+            start..end
+        });
+        let right = (!right.is_empty()).then_some(right);
 
-        if self.source.start <= source.start && source.end <= self.source.end {
-            // Rule totally covers provided range
-            let start = source.start + self.destination.start - self.source.start;
-            let end = source.end + self.destination.start - self.source.start;
-            return (None, Some(start..end), None);
-        }
-
-        if source.start <= self.source.start && source.end <= self.source.end {
-            // Rule totally covers provided range
-            let start = self.destination.start;
-            let end = source.end + self.destination.start - self.source.start;
-            return (
-                Some(source.start..self.source.start),
-                Some(start..end),
-                None,
-            );
-        }
-
-        if self.source.start <= source.start && self.source.end <= source.end {
-            // Rule totally covers provided range
-            let start = source.start + self.destination.start - self.source.start;
-            let end = self.destination.end;
-            return (None, Some(start..end), Some(self.source.end..source.end));
-        }
-
-        (
-            Some(source.start..self.source.start),
-            Some(self.destination.clone()),
-            Some(self.source.end..source.end),
-        )
+        (left, centre, right)
     }
 }
 
@@ -109,52 +132,34 @@ impl Rule {
 struct Map {
     from: String,
     to: String,
-    overrides: Vec<Rule>,
+    rules: Vec<Rule>,
 }
 
 impl Map {
-    fn map(&self, source: usize) -> usize {
-        for rule in self.overrides.iter() {
-            let (None, Some(destination), None) = rule.apply_range(source..(source + 1)) else {
-                continue;
-            };
-
-            return destination.start;
-        }
-
-        source
-    }
-
-    fn map_range(&self, source: Range<usize>) -> Vec<Range<usize>> {
-        let mut pending = VecDeque::new();
-        let mut result = Vec::new();
-
-        pending.push_back(source);
-
-        for rule in self.overrides.iter() {
-            let mut this_pass = VecDeque::new();
-            std::mem::swap(&mut this_pass, &mut pending);
-
-            for range in this_pass {
+    fn map(&self, s: Range<usize>) -> Vec<Range<usize>> {
+        let (mut a, b) = self.rules.iter().fold((vec![], vec![s]), |(a, b), rule| {
+            b.into_iter().fold((a, vec![]), |(mut a, mut b), range| {
                 let (too_small, mapped, too_large) = rule.apply_range(range);
 
                 if let Some(range) = too_small {
-                    pending.push_back(range);
+                    b.push(range);
                 }
 
                 if let Some(range) = too_large {
-                    pending.push_back(range);
+                    b.push(range);
                 }
 
                 if let Some(range) = mapped {
-                    result.push(range);
+                    a.push(range);
                 }
-            }
-        }
 
-        result.extend(pending);
+                (a, b)
+            })
+        });
 
-        result
+        a.extend(b);
+
+        a
     }
 }
 
@@ -187,53 +192,15 @@ impl FromStr for Map {
             return Err("Unexpected token");
         };
 
-        let overrides = lines
-            .map(|line| {
-                let mut tokens = line.split_ascii_whitespace();
+        let rules = lines.map(|line| line.parse()).collect::<Result<_, _>>()?;
 
-                let destination_start = tokens
-                    .next()
-                    .ok_or("Missing 'destination range start' field in mapping")?
-                    .parse()
-                    .map_err(|_| "Could not parse")?;
-
-                let source_start = tokens
-                    .next()
-                    .ok_or("Missing 'source range start' field in mapping")?
-                    .parse()
-                    .map_err(|_| "Could not parse")?;
-
-                let range = tokens
-                    .next()
-                    .ok_or("Missing 'range length' field in mapping")?
-                    .parse::<usize>()
-                    .map_err(|_| "Could not parse")?;
-
-                let None = tokens.next() else {
-                    return Err("Unexpected token");
-                };
-
-                let source = source_start..(source_start + range);
-                let destination = destination_start..(destination_start + range);
-
-                Ok(Rule {
-                    source,
-                    destination,
-                })
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(Map {
-            from,
-            to,
-            overrides,
-        })
+        Ok(Map { from, to, rules })
     }
 }
 
 #[derive(Debug)]
 struct Almanac {
-    seeds: Seeds,
+    inventory: Inventory,
     maps: Vec<Map>,
 }
 
@@ -241,68 +208,64 @@ impl FromStr for Almanac {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut chunks = s.trim().split_terminator("\n\n");
+        let mut lines = s.trim().lines();
 
-        let seeds = chunks.next().ok_or("Missing 'seeds' chunk")?.parse()?;
-
-        let maps = chunks
-            .map(|chunk| chunk.parse())
-            .collect::<Result<_, _>>()?;
-
-        Ok(Almanac { seeds, maps })
+        Ok(Almanac {
+            inventory: lines.next().ok_or("Missing inventory line")?.parse()?,
+            maps: lines.try_fold(Vec::<Map>::new(), |mut maps, line| {
+                if let Ok(map) = line.parse() {
+                    maps.push(map);
+                } else if let Ok(rule) = line.parse() {
+                    maps.last_mut().ok_or("Orphaned rule")?.rules.push(rule);
+                }
+                Ok(maps)
+            })?,
+        })
     }
 }
 
 impl Almanac {
-    fn map(&self, from: &str, value: usize) -> Option<(&str, usize)> {
-        let map = self.maps.iter().find(|map| map.from == from)?;
-
-        Some((map.to.as_str(), map.map(value)))
+    fn map_for(&self, item_type: &str) -> Option<&Map> {
+        self.maps.iter().find(|map| map.from == item_type)
     }
 }
 
 fn solve_part_1(input: &str) -> Option<usize> {
     let almanac = Almanac::from_str(input).ok()?;
 
-    let mut current_type = "seed";
-    let mut ids = almanac.seeds.0.clone();
+    let mut inventory = almanac.inventory.clone();
 
-    while current_type != "location" {
-        let mut temp_type = current_type;
-
-        for id in ids.iter_mut() {
-            let (new_type, new_id) = almanac.map(current_type, *id)?;
-            temp_type = new_type;
-            *id = new_id;
-        }
-
-        current_type = temp_type;
+    while inventory.item_type != "location" {
+        let map = almanac.map_for(inventory.item_type.as_str())?;
+        inventory.item_type = map.to.clone();
+        inventory.values = inventory
+            .values
+            .into_iter()
+            .map(|value| map.map(value..(value + 1))[0].start)
+            .collect();
     }
 
-    ids.into_iter().min()
+    inventory.values.into_iter().min()
 }
 
 fn solve_part_2(input: &str) -> Option<usize> {
     let almanac = Almanac::from_str(input).ok()?;
 
-    let mut current_type = "seed";
-    let mut current_ranges = almanac
-        .seeds
-        .0
-        .chunks(2)
-        .map(|chunk| chunk[0]..(chunk[0] + chunk[1]))
-        .collect::<Vec<_>>();
+    let mut inventory = almanac.inventory.clone();
 
-    while current_type != "location" {
-        let map = almanac.maps.iter().find(|map| map.from == current_type)?;
-        current_type = map.to.as_str();
-        current_ranges = current_ranges
-            .into_iter()
-            .flat_map(|range| map.map_range(range))
+    while inventory.item_type != "location" {
+        let map = almanac.map_for(inventory.item_type.as_str())?;
+        inventory.item_type = map.to.clone();
+        inventory.values = inventory
+            .values
+            .chunks(2)
+            .map(|chunk| chunk[0]..(chunk[0] + chunk[1]))
+            .flat_map(|range| map.map(range))
+            .flat_map(|range| [range.start, range.len()])
             .collect();
     }
 
-    current_ranges.iter().map(|range| range.start).min()
+    inventory.values.chunks(2).map(|chunk| chunk[0]).min()
 }
 
 #[cfg(test)]
@@ -310,23 +273,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn example_map() {
-        let map = Map::from_str(
-            r#"seed-to-soil map:
-50 98 2
-52 50 48"#,
-        )
-        .expect("Must be able to parse example map");
+    fn apply_example_rule() {
+        let rule = "50 98 2"
+            .parse::<Rule>()
+            .expect("Must be able to parse rule");
 
-        (98..100)
-            .zip(50..52)
-            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
-        (50..98)
-            .zip(52..100)
-            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
-        (0..50)
-            .zip(0..50)
-            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
+        let expected = (Some(0..98), Some(50..52), Some(100..usize::MAX));
+
+        let mapped = rule.apply_range(0..usize::MAX);
+
+        assert_eq!(mapped, expected);
     }
 
     #[test]
@@ -338,11 +294,13 @@ mod tests {
         )
         .expect("Must be able to parse example map");
 
-        let mut mapped = map.map_range(0..usize::MAX);
+        let expected = vec![0..50, 50..52, 52..100, 100..usize::MAX];
+
+        let mut mapped = map.map(0..usize::MAX);
 
         mapped.sort_by(|a, b| a.end.cmp(&b.end));
 
-        dbg!(mapped);
+        assert_eq!(mapped, expected);
     }
 
     #[test]
