@@ -41,70 +41,46 @@ impl ScratchCard {
 }
 
 impl FromStr for ScratchCard {
-    type Err = ();
+    type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.trim().strip_prefix("Card").ok_or(())?.trim().split(':');
+        let mut tokens = s.split_ascii_whitespace();
 
-        let id = split
-            .next()
-            .ok_or(())?
-            .trim()
-            .parse::<usize>()
-            .map_err(|_| ())?;
-
-        let rest = split.next().ok_or(())?.trim();
-
-        if split.next().is_some() {
-            return Err(());
-        }
-
-        let mut split = rest.split('|');
-
-        let winners = split
-            .next()
-            .ok_or(())?
-            .split_ascii_whitespace()
-            .map(|num| num.parse::<usize>())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| ())?;
-
-        let scratched = split
-            .next()
-            .ok_or(())?
-            .split_ascii_whitespace()
-            .map(|num| num.parse::<usize>())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| ())?;
-
-        if split.next().is_some() {
-            return Err(());
-        }
+        let Some("Card") = tokens.next() else {
+            return Err("Missing 'Card' token");
+        };
 
         Ok(ScratchCard {
-            id,
-            winners,
-            scratched,
+            id: tokens
+                .next()
+                .ok_or("Missing ID")?
+                .strip_suffix(":")
+                .ok_or("Missing ':' token")?
+                .parse()
+                .map_err(|_| "Could not parse ID")?,
+            winners: tokens
+                .by_ref()
+                .take_while(|&token| token != "|")
+                .map(|token| token.parse())
+                .collect::<Result<_, _>>()
+                .map_err(|_| "Could not parse winners")?,
+            scratched: tokens
+                .map(|token| token.parse())
+                .collect::<Result<_, _>>()
+                .map_err(|_| "Could not parse scratched")?,
         })
     }
 }
 
 fn solve_part_1(input: &str) -> Option<u128> {
-    let sum = input
+    input
         .lines()
         .filter_map(|line| line.parse::<ScratchCard>().ok())
-        .map(|card| {
-            let matches = card.matches();
-
-            if matches > 0 {
-                1 << (matches - 1)
-            } else {
-                0
-            }
-        })
-        .sum::<u128>();
-
-    Some(sum)
+        .map(|card| card.matches())
+        .filter(|&matches| matches > 0)
+        .map(|matches| 1 << (matches - 1))
+        .sum::<u128>()
+        .into()
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
@@ -112,28 +88,19 @@ fn solve_part_2(input: &str) -> Option<u128> {
         .lines()
         .filter_map(|line| line.parse::<ScratchCard>().ok())
         .enumerate()
-        .try_fold(
-            (0, VecDeque::new()),
-            |(total, mut pending), (index, card)| {
-                if index + 1 != card.id {
-                    return None;
-                }
+        .filter(|(index, card)| index + 1 == card.id)
+        .map(|(_, card)| card.matches())
+        .fold((0, VecDeque::new()), |(total, mut pending), matches| {
+            let count = 1 + pending.pop_front().unwrap_or(0);
 
-                let count = 1 + pending.pop_front().unwrap_or(0);
+            let new = pending.len()..matches;
 
-                let matches = card.matches();
+            pending.iter_mut().take(matches).for_each(|x| *x += count);
 
-                let pivot = matches.min(pending.len());
+            pending.extend(new.map(|_| count));
 
-                for index in 0..pivot {
-                    pending[index] += count;
-                }
-
-                pending.extend((pivot..matches).map(|_| count));
-
-                Some((total + count, pending))
-            },
-        )?;
+            (total + count, pending)
+        });
 
     pending.is_empty().then_some(total)
 }
