@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::VecDeque, ops::Range, str::FromStr};
 
 use clap::Parser;
 
@@ -47,22 +47,125 @@ impl FromStr for Seeds {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Rule {
+    source: Range<usize>,
+    destination: Range<usize>,
+}
+
+impl Rule {
+    fn apply(&self, source: usize) -> Option<usize> {
+        self.source
+            .contains(&source)
+            .then(|| self.destination.start + source - self.source.start)
+    }
+
+    fn apply_range(
+        &self,
+        source: Range<usize>,
+    ) -> (
+        Option<Range<usize>>,
+        Option<Range<usize>>,
+        Option<Range<usize>>,
+    ) {
+        if source.end <= self.source.start {
+            // Provided range is before this rule
+            return (Some(source), None, None);
+        }
+
+        if source.start >= self.source.end {
+            // Provided range is after this rule
+            return (None, None, Some(source));
+        }
+
+        if source == self.source {
+            // Perfect overlap
+            return (None, Some(self.destination.clone()), None);
+        }
+
+        if self.source.start <= source.start && source.end <= self.source.end {
+            // Rule totally covers provided range
+            let start = source.start + self.destination.start - self.source.start;
+            let end = source.end + self.destination.start - self.source.start;
+            return (None, Some(start..end), None);
+        }
+
+        if source.start <= self.source.start && source.end <= self.source.end {
+            // Rule totally covers provided range
+            let start = self.destination.start;
+            let end = source.end + self.destination.start - self.source.start;
+            return (
+                Some(source.start..self.source.start),
+                Some(start..end),
+                None,
+            );
+        }
+
+        if self.source.start <= source.start && self.source.end <= source.end {
+            // Rule totally covers provided range
+            let start = source.start + self.destination.start - self.source.start;
+            let end = self.destination.end;
+            return (None, Some(start..end), Some(self.source.end..source.end));
+        }
+
+        (
+            Some(source.start..self.source.start),
+            Some(self.destination.clone()),
+            Some(self.source.end..source.end),
+        )
+    }
+}
+
 #[derive(Debug)]
 struct Map {
     from: String,
     to: String,
-    overrides: Vec<(usize, usize, usize)>,
+    overrides: Vec<Rule>,
 }
 
 impl Map {
     fn map(&self, source: usize) -> usize {
-        for &(d, s, l) in self.overrides.iter() {
-            if (s..(s + l)).contains(&source) {
-                return d + source - s
-            }
+        for rule in self.overrides.iter() {
+            let Some(destination) = rule.apply(source) else {
+                continue;
+            };
+
+            return destination;
         }
 
         source
+    }
+
+    fn map_range(&self, source: Range<usize>) -> Vec<Range<usize>> {
+        let mut pending = VecDeque::new();
+        let mut result = Vec::new();
+
+        pending.push_back(source);
+
+        for rule in self.overrides.iter() {
+            let mut this_pass = VecDeque::new();
+            std::mem::swap(&mut this_pass, &mut pending);
+
+            for range in this_pass {
+                let (too_small, mapped, too_large) = rule.apply_range(range);
+
+                if let Some(range) = too_small {
+                    pending.push_back(range);
+                }
+
+                if let Some(range) = too_large {
+                    pending.push_back(range);
+                }
+
+                if let Some(range) = mapped {
+                    result.push(range);
+                }
+            }
+        }
+
+        result.extend(pending);
+
+        result
     }
 }
 
@@ -114,14 +217,20 @@ impl FromStr for Map {
                 let range = tokens
                     .next()
                     .ok_or("Missing 'range length' field in mapping")?
-                    .parse()
+                    .parse::<usize>()
                     .map_err(|_| "Could not parse")?;
 
                 let None = tokens.next() else {
                     return Err("Unexpected token");
                 };
 
-                Ok((destination_start, source_start, range))
+                let source = source_start..(source_start + range);
+                let destination = destination_start..(destination_start + range);
+
+                Ok(Rule {
+                    source,
+                    destination,
+                })
             })
             .collect::<Result<_, _>>()?;
 
@@ -168,7 +277,7 @@ fn solve_part_1(input: &str) -> Option<usize> {
 
     let mut current_type = "seed";
     let mut ids = almanac.seeds.0.clone();
-    
+
     while current_type != "location" {
         let mut temp_type = current_type;
 
@@ -187,20 +296,24 @@ fn solve_part_1(input: &str) -> Option<usize> {
 fn solve_part_2(input: &str) -> Option<usize> {
     let almanac = Almanac::from_str(input).ok()?;
 
-    let result = almanac.seeds.0.chunks(2).flat_map(|chunk| chunk[0] .. (chunk[0] + chunk[1])).filter_map(|id| {
-        let mut id = id;
-        let mut current_type = "seed";
+    let mut current_type = "seed";
+    let mut current_ranges = almanac
+        .seeds
+        .0
+        .chunks(2)
+        .map(|chunk| chunk[0]..(chunk[0] + chunk[1]))
+        .collect::<Vec<_>>();
 
-        while current_type != "location" {
-            let (new_type, new_id) = almanac.map(current_type, id)?;
-            id = new_id;
-            current_type = new_type;
-        }
+    while current_type != "location" {
+        let map = almanac.maps.iter().find(|map| map.from == current_type)?;
+        current_type = map.to.as_str();
+        current_ranges = current_ranges
+            .into_iter()
+            .flat_map(|range| map.map_range(range))
+            .collect();
+    }
 
-        Some(id)
-    }).min();
-    
-    result
+    current_ranges.iter().map(|range| range.start).min()
 }
 
 #[cfg(test)]
@@ -209,13 +322,38 @@ mod tests {
 
     #[test]
     fn example_map() {
-        let map = Map::from_str(r#"seed-to-soil map:
+        let map = Map::from_str(
+            r#"seed-to-soil map:
 50 98 2
-52 50 48"#).expect("Must be able to parse example map");
+52 50 48"#,
+        )
+        .expect("Must be able to parse example map");
 
-        (98..100).zip(50..52).for_each(|(source, destination)| assert_eq!(map.map(source), destination));
-        (50..98).zip(52..100).for_each(|(source, destination)| assert_eq!(map.map(source), destination));
-        (0..50).zip(0..50).for_each(|(source, destination)| assert_eq!(map.map(source), destination));
+        (98..100)
+            .zip(50..52)
+            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
+        (50..98)
+            .zip(52..100)
+            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
+        (0..50)
+            .zip(0..50)
+            .for_each(|(source, destination)| assert_eq!(map.map(source), destination));
+    }
+
+    #[test]
+    fn example_map_range() {
+        let map = Map::from_str(
+            r#"seed-to-soil map:
+50 98 2
+52 50 48"#,
+        )
+        .expect("Must be able to parse example map");
+
+        let mut mapped = map.map_range(0..usize::MAX);
+
+        mapped.sort_by(|a, b| a.end.cmp(&b.end));
+
+        dbg!(mapped);
     }
 
     #[test]
