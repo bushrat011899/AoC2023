@@ -54,12 +54,6 @@ struct Rule {
 }
 
 impl Rule {
-    fn apply(&self, source: usize) -> Option<usize> {
-        self.source
-            .contains(&source)
-            .then(|| self.destination.start + source - self.source.start)
-    }
-
     fn apply_range(
         &self,
         source: Range<usize>,
@@ -76,11 +70,6 @@ impl Rule {
         if source.start >= self.source.end {
             // Provided range is after this rule
             return (None, None, Some(source));
-        }
-
-        if source == self.source {
-            // Perfect overlap
-            return (None, Some(self.destination.clone()), None);
         }
 
         if self.source.start <= source.start && source.end <= self.source.end {
@@ -126,11 +115,11 @@ struct Map {
 impl Map {
     fn map(&self, source: usize) -> usize {
         for rule in self.overrides.iter() {
-            let Some(destination) = rule.apply(source) else {
+            let (None, Some(destination), None) = rule.apply_range(source..(source + 1)) else {
                 continue;
             };
 
-            return destination;
+            return destination.start;
         }
 
         source
