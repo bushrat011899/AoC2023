@@ -1,5 +1,5 @@
 use std::{
-    ops::{Range, RangeInclusive},
+    ops::RangeInclusive,
     str::FromStr,
 };
 
@@ -40,9 +40,9 @@ impl Race {
 
         let start_time = hold.min(self.time);
         let start_speed = INITIAL_SPEED + ACCELERATION * start_time;
-        let distance = (self.time - start_time) * start_speed;
+        
 
-        distance
+        (self.time - start_time) * start_speed
     }
 
     fn record_breakers(&self) -> RangeInclusive<u128> {
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn example_part_1() {
-        const INPUT: &'static str = r#"Time:      7  15   30
+        const INPUT: &str = r#"Time:      7  15   30
 Distance:  9  40  200"#;
         const RESULT: Option<u128> = Some(288);
 
@@ -171,7 +171,7 @@ Distance:  9  40  200"#;
 
     #[test]
     fn example_part_2() {
-        const INPUT: &'static str = r#"Time:      7  15   30
+        const INPUT: &str = r#"Time:      7  15   30
 Distance:  9  40  200"#;
         const RESULT: Option<u128> = Some(71503);
 

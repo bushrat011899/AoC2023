@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn example_part_1() {
-        const INPUT: &'static str = r#"467..114..
+        const INPUT: &str = r#"467..114..
 ...*......
 ..35..633.
 ......#...
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn example_part_2() {
-        const INPUT: &'static str = r#"467..114..
+        const INPUT: &str = r#"467..114..
 ...*......
 ..35..633.
 ......#...

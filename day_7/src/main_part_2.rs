@@ -112,7 +112,7 @@ impl Hand {
         let jokers = *all_counts.get(&Card::Joker).unwrap_or(&0);
 
         let highest = standard_counts.last().unwrap();
-        let second = standard_counts.iter().rev().skip(1).next().unwrap();
+        let second = standard_counts.iter().rev().nth(1).unwrap();
 
         if highest + jokers == 5 {
             HandType::FiveOfAKind

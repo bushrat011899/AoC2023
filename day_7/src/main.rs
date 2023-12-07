@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn example_part_1() {
-        const INPUT: &'static str = r#"32T3K 765
+        const INPUT: &str = r#"32T3K 765
 T55J5 684
 KK677 28
 KTJJT 220
@@ -247,7 +247,7 @@ QQQJA 483"#;
 
     #[test]
     fn example_part_2() {
-        const INPUT: &'static str = r#"32T3K 765
+        const INPUT: &str = r#"32T3K 765
 T55J5 684
 KK677 28
 KTJJT 220

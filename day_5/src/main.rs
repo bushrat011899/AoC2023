@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn example_part_1() {
-        const INPUT: &'static str = r#"seeds: 79 14 55 13
+        const INPUT: &str = r#"seeds: 79 14 55 13
 
 seed-to-soil map:
 50 98 2
@@ -345,7 +345,7 @@ humidity-to-location map:
 
     #[test]
     fn example_part_2() {
-        const INPUT: &'static str = r#"seeds: 79 14 55 13
+        const INPUT: &str = r#"seeds: 79 14 55 13
 
 seed-to-soil map:
 50 98 2
