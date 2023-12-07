@@ -1,7 +1,4 @@
-use std::{
-    cmp::Ordering,
-    str::FromStr, collections::HashMap,
-};
+use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 enum Card {
@@ -96,43 +93,43 @@ impl FromStr for Hand {
 impl Hand {
     fn classify(&self) -> HandType {
         let all_counts = Card::all()
-            .map(|target| (target, self.cards.iter().filter(|&&card| card == target).count()))
+            .map(|target| {
+                (
+                    target,
+                    self.cards.iter().filter(|&&card| card == target).count(),
+                )
+            })
             .collect::<HashMap<_, _>>();
 
-        let mut standard_counts = all_counts.iter().filter(|&(&card, _)| card != Card::Joker).map(|(_, count)| *count).collect::<Vec<_>>();
+        let mut standard_counts = all_counts
+            .iter()
+            .filter(|&(&card, _)| card != Card::Joker)
+            .map(|(_, count)| *count)
+            .collect::<Vec<_>>();
 
         standard_counts.sort();
 
         let jokers = *all_counts.get(&Card::Joker).unwrap_or(&0);
 
-        match (&standard_counts[..], jokers) {
-            ([.., 5], 0) => HandType::FiveOfAKind,
-            ([.., 4], 1) => HandType::FiveOfAKind,
-            ([.., 3], 2) => HandType::FiveOfAKind,
-            ([.., 2], 3) => HandType::FiveOfAKind,
-            ([.., 1], 4) => HandType::FiveOfAKind,
-            ([.., 0], 5) => HandType::FiveOfAKind,
+        let highest = standard_counts.last().unwrap();
+        let second = standard_counts.iter().rev().skip(1).next().unwrap();
 
-            ([.., 4], 0) => HandType::FourOfAKind,
-            ([.., 3], 1) => HandType::FourOfAKind,
-            ([.., 2], 2) => HandType::FourOfAKind,
-            ([.., 1], 3) => HandType::FourOfAKind,
-
-            ([.., 2, 3], 0) => HandType::FullHouse,
-            ([.., 2, 2], 1) => HandType::FullHouse,
-
-            ([.., 3], 0) => HandType::ThreeOfAKind,
-            ([.., 2], 1) => HandType::ThreeOfAKind,
-            ([.., 1], 2) => HandType::ThreeOfAKind,
-
-            ([.., 2, 2], 0) => HandType::TwoPair,
-
-            ([.., 2], 0) => HandType::OnePair,
-            ([.., 1], 1) => HandType::OnePair,
-
-            ([.., 1], 0) => HandType::HighCard,
-
-            _ => unreachable!(),
+        if highest + jokers == 5 {
+            HandType::FiveOfAKind
+        } else if highest + jokers == 4 {
+            HandType::FourOfAKind
+        } else if second + highest + jokers == 5 {
+            HandType::FullHouse
+        } else if highest + jokers == 3 {
+            HandType::ThreeOfAKind
+        } else if second + highest + jokers == 4 {
+            HandType::TwoPair
+        } else if highest + jokers == 2 {
+            HandType::OnePair
+        } else if highest + jokers == 1 {
+            HandType::HighCard
+        } else {
+            unreachable!()
         }
     }
 }

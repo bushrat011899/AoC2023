@@ -1,7 +1,4 @@
-use std::{
-    cmp::Ordering,
-    str::FromStr,
-};
+use std::{cmp::Ordering, str::FromStr};
 
 use clap::Parser;
 
