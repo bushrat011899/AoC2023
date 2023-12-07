@@ -130,7 +130,7 @@ impl FromStr for TheBigCompetition {
             .map_err(|_| "Could not parse distance")?;
 
         Ok(TheBigCompetition {
-            race: Race { time, distance }
+            race: Race { time, distance },
         })
     }
 }
