@@ -1,7 +1,4 @@
-use std::{
-    ops::RangeInclusive,
-    str::FromStr,
-};
+use std::{ops::RangeInclusive, str::FromStr};
 
 use clap::Parser;
 
@@ -40,7 +37,6 @@ impl Race {
 
         let start_time = hold.min(self.time);
         let start_speed = INITIAL_SPEED + ACCELERATION * start_time;
-        
 
         (self.time - start_time) * start_speed
     }
