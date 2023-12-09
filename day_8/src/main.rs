@@ -192,7 +192,10 @@ fn gcd(mut n: u128, mut m: u128) -> u128 {
 }
 
 fn solve_part_1(input: &str) -> Option<u128> {
-    input.parse::<Map>().ok()?.steps_to_end(NodeId(['A', 'A', 'A']))
+    input
+        .parse::<Map>()
+        .ok()?
+        .steps_to_end(NodeId(['A', 'A', 'A']))
 }
 
 fn solve_part_2(input: &str) -> Option<u128> {
