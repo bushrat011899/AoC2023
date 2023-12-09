@@ -1,5 +1,3 @@
-use std::{collections::HashMap, str::FromStr};
-
 use clap::Parser;
 
 /// Command arguments
@@ -25,66 +23,69 @@ fn main() {
     println!("Part 2: {:?}", result);
 }
 
-fn finite_diff(input: impl Iterator<Item = i64> + Clone) -> Option<impl Iterator<Item = i64> + Clone> {
-    if input.clone().all(|item| item == 0) {
-        None
-    } else {
-        Some(input.clone().zip(input.skip(1)).map(|(a, b)| b - a))
+struct Predictor<T> {
+    wave: Vec<T>,
+}
+
+impl Iterator for Predictor<i64> {
+    type Item = i64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.wave.iter_mut().rev().fold(None, |sum, diff| {
+            *diff += sum.unwrap_or(0);
+            Some(*diff)
+        })
+    }
+}
+
+impl FromIterator<i64> for Predictor<i64> {
+    fn from_iter<T: IntoIterator<Item = i64>>(iter: T) -> Self {
+        let mut wave = iter
+            .into_iter()
+            .fold(Vec::<i64>::new(), |mut wave, mut item| {
+                for old in wave.iter_mut() {
+                    std::mem::swap(old, &mut item);
+                    item = *old - item;
+                }
+
+                wave.push(item);
+
+                wave
+            });
+
+        while let Some(0) = wave.last() {
+            wave.pop();
+        }
+
+        wave.push(0);
+
+        Self { wave }
     }
 }
 
 fn solve_part_1(input: &str) -> Option<i64> {
-    let mut sum = 0;
-
-    for line in input.lines() {
-        let sequence = line
-            .split_ascii_whitespace()
-            .map(|token| token.parse::<i64>().ok())
-            .collect::<Option<Vec<_>>>()?;
-
-        let mut sequences = vec![sequence];
-
-        loop {
-            let last_sequence = sequences.last().unwrap().iter().copied();
-
-            let Some(difference) = finite_diff(last_sequence) else {
-                break;
-            };
-
-            sequences.push(difference.collect());
-        }
-
-        sum += sequences.into_iter().rev().try_fold(0, |sum, sequence| Some(sequence.last()? + sum))?;
-    }
-
-    Some(sum)
+    input
+        .lines()
+        .map(|line| {
+            line.split_ascii_whitespace()
+                .map(|token| token.parse::<i64>().ok())
+                .collect::<Option<Predictor<_>>>()?
+                .next()
+        })
+        .try_fold(0, |sum, item| Some(sum + item?))
 }
 
 fn solve_part_2(input: &str) -> Option<i64> {
-    let mut sum = 0;
-
-    for line in input.lines() {
-        let sequence = line
-            .split_ascii_whitespace()
-            .map(|token| token.parse::<i64>().ok())
-            .collect::<Option<Vec<_>>>()?;
-
-        let mut sequences = vec![sequence];
-
-        loop {
-            let last_sequence = sequences.last().unwrap().iter().copied();
-
-            let Some(difference) = finite_diff(last_sequence) else {
-                break;
-            };
-
-            sequences.push(difference.collect());
-        }
-
-        sum += sequences.into_iter().rev().try_fold(0, |sum, sequence| Some(sequence.first()? - sum))?;
-    }
-
-    Some(sum)
+    input
+        .lines()
+        .map(|line| {
+            line.split_ascii_whitespace()
+                .map(|token| token.parse::<i64>().ok())
+                .rev()
+                .collect::<Option<Predictor<_>>>()?
+                .next()
+        })
+        .try_fold(0, |sum, item| Some(sum + item?))
 }
 
 #[cfg(test)]
