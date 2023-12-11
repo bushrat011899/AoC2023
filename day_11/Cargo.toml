@@ -1,0 +1,10 @@
+[package]
+name = "day_11"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+clap.workspace = true
+image.workspace = true
