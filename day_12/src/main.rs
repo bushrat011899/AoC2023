@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use clap::Parser;
 use rayon::prelude::*;
+use indicatif::ParallelProgressIterator;
 
 /// Command arguments
 #[derive(Parser, Debug)]
@@ -46,10 +47,11 @@ impl TryFrom<char> for State {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Row {
     states: Vec<State>,
     groups: Vec<usize>,
+    active: Option<usize>,
 }
 
 impl FromStr for Row {
@@ -70,58 +72,81 @@ impl FromStr for Row {
             .ok_or("Unexpected End of Stream")?
             .split(',')
             .map(|token| token.trim().parse())
-            .collect::<Result<_, _>>()
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|_| "Could not parse groups")?;
 
-        Ok(Self { states, groups })
+        let active = None;
+
+        Ok(Self { states, groups, active })
     }
 }
 
 impl Row {
     fn arrangements(&self) -> usize {
-        let mut groups = vec![];
-        let mut counter = None;
+        let mut groups = self.groups.clone();
+        let mut active = self.active;
 
         for (index, state) in self.states.iter().enumerate() {
-            if groups.len() > self.groups.len() {
-                return 0
-            }
-
-            if groups.len() > 1 && groups[0..(groups.len() - 1)] != self.groups[0..(groups.len() - 1)] {
-                return 0
-            }
-
-            if groups.iter().sum::<usize>() > self.groups.iter().sum() {
-                return 0
-            }
-
             match state {
-                State::Damaged => counter = Some(counter.unwrap_or(0) + 1),
-                State::Operational if counter.is_some() => {
-                    groups.push(counter.unwrap());
-                    counter = None;
+                State::Damaged => {
+                    if active.is_none() {
+                        if groups.is_empty() {
+                            return 0;
+                        }
+
+                        active = Some(groups.remove(0))
+                    }
+                    
+                    let Some(count) = active else {
+                        return 0;
+                    };
+                    
+                    let Some(count) = count.checked_sub(1) else {
+                        return 0
+                    };
+
+                    active = Some(count);
+                },
+                State::Operational => {
+                    if let Some(count) = active {
+                        if count == 0 {
+                            active = None;
+                        } else {
+                            return 0
+                        }
+                    }
                 },
                 State::Unknown => {
-                    let mut result = 0;
-                    let mut clone = self.clone();
+                    if active.is_some_and(|count| count > 0) {
+                        active = Some(active.unwrap() - 1);
+                    } else if active.is_some_and(|count| count == 0) {
+                        active = None;
+                    } else {
+                        let mut result = 0;
 
-                    clone.states[index] = State::Damaged;
-                    result += clone.arrangements();
+                        let mut clone = Self {
+                            states: self.states[index..].to_vec(),
+                            groups: groups.clone(),
+                            active,
+                        };
 
-                    clone.states[index] = State::Operational;
-                    result += clone.arrangements();
+                        clone.states[0] = State::Operational;
+                        result += clone.arrangements();
 
-                    return result;
+                        clone.states[0] = State::Damaged;
+                        result += clone.arrangements();
+
+                        return result;
+                    }
                 },
-                _ => {},
             }
         }
 
-        if let Some(counter) = counter {
-            groups.push(counter);
+        while let Some(0) = groups.get(0) {
+            groups.remove(0);
         }
 
-        if groups == self.groups {
+        if groups.is_empty() {
             1
         } else {
             0
@@ -135,20 +160,24 @@ impl Row {
         let states = self.states.into_iter().chain(std::iter::once(State::Unknown)).cycle().take((n + 1) * 5 - 1).collect();
         let groups = self.groups.into_iter().cycle().take(m * 5).collect();
 
-        Self { states, groups }
+        Self { states, groups, active: None }
     }
 }
 
 fn solve_part_1(input: &str) -> Result<usize, &'static str> {
     let rows = input.lines().map(|line| line.parse()).collect::<Result<Vec<Row>, _>>()?;
 
-    Ok(rows.into_iter().map(|row| row.arrangements()).sum())
+    let count = rows.len();
+
+    Ok(rows.into_par_iter().progress_count(count as u64).map(|row| row.arrangements()).sum())
 }
 
 fn solve_part_2(input: &str) -> Result<usize, &'static str> {
     let rows = input.lines().map(|line| line.parse()).collect::<Result<Vec<Row>, _>>()?;
 
-    Ok(rows.into_par_iter().enumerate().map(|(index, row)| { println!("Completed Line {index}"); row.unfold().arrangements() }).sum())
+    let count = rows.len();
+
+    Ok(rows.into_par_iter().progress_count(count as u64).map(|row| row.unfold().arrangements()).sum())
 }
 
 #[cfg(test)]
@@ -157,7 +186,7 @@ mod tests {
 
     #[test]
     fn example_1_part_1() {
-        const INPUT: &str = r#"# 1"#;
+        const INPUT: &str = r#"???.### 1,1,3"#;
         const RESULT: usize = 1;
 
         let row = INPUT.parse::<Row>().expect("Must be able to parse input");

@@ -9,3 +9,4 @@ description.workspace = true
 clap.workspace = true
 image.workspace = true
 rayon.workspace = true
+indicatif.workspace = true
